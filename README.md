@@ -32,33 +32,30 @@ Common logging library for `pg_core`, `worker`, and `backoffice`.
 
 - Use `MdcStepCoroutineContext.captureCurrent()` to propagate MDC + StepContext in coroutine boundaries.
 
-## Publish (CodeArtifact)
+## Publish (GitHub Packages)
 
 - Configure Gradle properties (CI recommended):
   - `loggingLibVersion` (default `1.0.0-SNAPSHOT`)
-  - `codeArtifactSnapshotUrl` or `codeArtifactReleaseUrl`
-  - `codeArtifactUser` (default `aws`)
-  - `codeArtifactToken` (ephemeral token)
+  - `githubPackagesSnapshotUrl` or `githubPackagesReleaseUrl`
+  - `githubPackagesUser` (default: `GITHUB_ACTOR`)
+  - `githubPackagesToken` (default: `GITHUB_TOKEN`)
 - Publish command:
   - `./gradlew publish`
 
 Repository routing is selected by version suffix:
-- `*-SNAPSHOT` -> `codeArtifactSnapshotUrl`
-- otherwise -> `codeArtifactReleaseUrl`
+- `*-SNAPSHOT` -> `githubPackagesSnapshotUrl` (fallback to release URL)
+- otherwise -> `githubPackagesReleaseUrl` (fallback to snapshot URL)
 
 ## GitHub Actions Publish
 
-Workflow: `.github/workflows/publish-codeartifact.yml`
+Workflow: `.github/workflows/publish-github-packages.yml`
 
-Repository variables required:
-- `AWS_REGION`
-- `CODEARTIFACT_DOMAIN`
-- `CODEARTIFACT_DOMAIN_OWNER`
-- `CODEARTIFACT_RELEASE_REPOSITORY`
-- `CODEARTIFACT_SNAPSHOT_REPOSITORY` (optional, defaults to release repository)
+Required permissions:
+- `packages: write`
+- `contents: read`
 
 Repository secret required:
-- `AWS_CODEARTIFACT_PUBLISH_ROLE_ARN` (OIDC assume role)
+- none (uses built-in `GITHUB_TOKEN`)
 
 Trigger rules:
 - push to `main`: publish snapshot version

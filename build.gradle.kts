@@ -120,18 +120,26 @@ subprojects {
         }
     }
 
-    val releaseUrl = providers.gradleProperty("codeArtifactReleaseUrl").orNull
-    val snapshotUrl = providers.gradleProperty("codeArtifactSnapshotUrl").orNull
-    val repositoryUrl = if (version.toString().endsWith("-SNAPSHOT")) snapshotUrl else releaseUrl
+    val releaseUrl = providers.gradleProperty("githubPackagesReleaseUrl").orNull
+    val snapshotUrl = providers.gradleProperty("githubPackagesSnapshotUrl").orNull
+    val repositoryUrl = if (version.toString().endsWith("-SNAPSHOT")) {
+        snapshotUrl ?: releaseUrl
+    } else {
+        releaseUrl ?: snapshotUrl
+    }
 
     if (!repositoryUrl.isNullOrBlank()) {
         publishing.repositories {
             maven {
-                name = "codeArtifact"
+                name = "githubPackages"
                 url = uri(repositoryUrl)
                 credentials {
-                    username = providers.gradleProperty("codeArtifactUser").orElse("aws").get()
-                    password = providers.gradleProperty("codeArtifactToken").orNull
+                    username = providers.gradleProperty("githubPackagesUser")
+                        .orElse(providers.environmentVariable("GITHUB_ACTOR"))
+                        .get()
+                    password = providers.gradleProperty("githubPackagesToken")
+                        .orElse(providers.environmentVariable("GITHUB_TOKEN"))
+                        .orNull
                 }
             }
         }
