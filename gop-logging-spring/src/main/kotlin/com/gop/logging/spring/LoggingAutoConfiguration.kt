@@ -44,19 +44,19 @@ class LoggingAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    fun stepContextAspect(stepResolver: StepResolver): StepContextAspect {
+    fun gopStepContextAspect(stepResolver: StepResolver): StepContextAspect {
         return StepContextAspect(stepResolver)
     }
 
     @Bean
     @ConditionalOnMissingBean
-    fun technicalLoggingAspect(structuredLogger: StructuredLogger): TechnicalLoggingAspect {
+    fun gopTechnicalLoggingAspect(structuredLogger: StructuredLogger): TechnicalLoggingAspect {
         return TechnicalLoggingAspect(structuredLogger)
     }
 
     @Bean
     @ConditionalOnMissingBean(TaskDecorator::class)
-    fun mdcStepTaskDecorator(structuredLogger: StructuredLogger): TaskDecorator {
+    fun gopMdcStepTaskDecorator(structuredLogger: StructuredLogger): TaskDecorator {
         return MdcStepTaskDecorator(structuredLogger)
     }
 
@@ -64,7 +64,7 @@ class LoggingAutoConfiguration {
     @ConditionalOnClass(OncePerRequestFilter::class)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     @ConditionalOnMissingBean(TraceContextFilter::class)
-    fun traceContextFilter(structuredLogger: StructuredLogger, environment: Environment): TraceContextFilter {
+    fun gopTraceContextFilter(structuredLogger: StructuredLogger, environment: Environment): TraceContextFilter {
         val configuredPrefixes = environment.getProperty("LOG_TRACE_EXCLUDED_PATH_PREFIXES")
             ?.split(",")
             ?.map { it.trim() }
