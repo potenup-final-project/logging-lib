@@ -1,6 +1,7 @@
 package com.gop.logging.spring
 
 import com.gop.logging.contract.LogResult
+import com.gop.logging.contract.LogMdcKeys
 import com.gop.logging.contract.LogStep
 import com.gop.logging.contract.LogType
 import com.gop.logging.contract.StructuredLogger
@@ -16,6 +17,8 @@ class MdcStepTaskDecorator(
     override fun decorate(runnable: Runnable): Runnable {
         val contextMap = MDC.getCopyOfContextMap()
         val stepSnapshot = StepContext.get()
+        val mdcStepSnapshot = contextMap?.get(LogMdcKeys.STEP)
+        val shouldWarnMissingStep = stepSnapshot == null && hasDistributedTraceContext(contextMap)
 
         return Runnable {
             val previousContext = MDC.getCopyOfContextMap()
@@ -29,17 +32,23 @@ class MdcStepTaskDecorator(
 
                 if (stepSnapshot != null) {
                     StepContext.set(stepSnapshot)
+                } else if (!mdcStepSnapshot.isNullOrBlank()) {
+                    StepContext.set(mdcStepSnapshot)
                 } else {
-                    StepContext.scoped(LogStep.LOGGING_CONTEXT_MISSING) {
-                        structuredLogger.warn(
-                            logType = LogType.TECHNICAL,
-                            result = LogResult.SKIP,
-                            payload = mapOf(
-                                "reason" to "step context missing on async propagation",
-                                "executorName" to executorName,
-                                "threadName" to Thread.currentThread().name
+                    if (shouldWarnMissingStep) {
+                        StepContext.scoped(LogStep.LOGGING_CONTEXT_MISSING) {
+                            structuredLogger.warn(
+                                logType = LogType.TECHNICAL,
+                                result = LogResult.SKIP,
+                                payload = mapOf(
+                                    "reason" to "step context missing on async propagation",
+                                    "executorName" to executorName,
+                                    "threadName" to Thread.currentThread().name
+                                )
                             )
-                        )
+                        }
+                    } else {
+                        StepContext.clear()
                     }
                 }
 
@@ -72,5 +81,19 @@ class MdcStepTaskDecorator(
                 }
             }
         }
+    }
+
+    private fun hasDistributedTraceContext(contextMap: Map<String, String>?): Boolean {
+        if (contextMap.isNullOrEmpty()) {
+            return false
+        }
+
+        return listOf(
+            LogMdcKeys.TRACE_ID,
+            LogMdcKeys.ORDER_FLOW_ID,
+            LogMdcKeys.EVENT_ID,
+            LogMdcKeys.MESSAGE_ID,
+            LogMdcKeys.DELIVERY_ID
+        ).any { key -> !contextMap[key].isNullOrBlank() }
     }
 }
