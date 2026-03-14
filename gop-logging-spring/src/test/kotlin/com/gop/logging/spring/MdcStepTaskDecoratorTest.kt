@@ -38,18 +38,15 @@ class MdcStepTaskDecoratorTest {
     }
 
     @Test
-    fun logsWarningWhenStepContextMissing() {
+    fun doesNotWarnWhenStepContextMissingWithoutDistributedContext() {
         val logger = DecoratorCapturingStructuredLogger()
         val decorator = MdcStepTaskDecorator(logger)
-        MDC.put(LogMdcKeys.TRACE_ID, "trace-test")
+        MDC.clear()
         StepContext.clear()
 
         decorator.decorate { }.run()
 
-        assertEquals(1, logger.logs.size)
-        assertEquals(LogType.TECHNICAL, logger.logs.first().logType)
-        assertEquals(LogResult.SKIP, logger.logs.first().result)
-        MDC.clear()
+        assertTrue(logger.logs.isEmpty())
     }
 
     @Test
