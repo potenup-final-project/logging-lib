@@ -1,0 +1,322 @@
+package com.gop.logging.core
+
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.gop.logging.contract.LogEnvelope
+import com.gop.logging.contract.LogError
+import com.gop.logging.contract.LogMdcKeys
+import com.gop.logging.contract.LogResult
+import com.gop.logging.contract.LogStep
+import com.gop.logging.contract.LogType
+import com.gop.logging.contract.ProcessResult
+import com.gop.logging.contract.StructuredLogger
+import com.gop.logging.contract.CodedError
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import org.slf4j.MDC
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
+
+class StructuredLoggerImpl(
+    private val serviceName: String,
+    private val sanitizer: LogSanitizer = LogSanitizer(),
+    private val rateLimiter: LogRateLimiter = LogRateLimiter.fromEnvironment(),
+    private val emitter: LogEmitter = Slf4jLogEmitter(LoggerFactory.getLogger(StructuredLoggerImpl::class.java))
+) : StructuredLogger {
+
+    private val mapper: ObjectMapper = defaultObjectMapper()
+
+    init {
+        require(serviceName.isNotBlank()) { "serviceName must not be blank" }
+    }
+
+    override fun debug(logType: LogType, result: LogResult, payload: Map<String, Any?>, error: Throwable?) {
+        write("DEBUG", logType, result, payload, error)
+    }
+
+    override fun info(logType: LogType, result: LogResult, payload: Map<String, Any?>, error: Throwable?) {
+        write("INFO", logType, result, payload, error)
+    }
+
+    override fun warn(logType: LogType, result: LogResult, payload: Map<String, Any?>, error: Throwable?) {
+        write("WARN", logType, result, payload, error)
+    }
+
+    override fun error(logType: LogType, result: LogResult, payload: Map<String, Any?>, error: Throwable?) {
+        write("ERROR", logType, result, payload, error)
+    }
+
+    private fun write(
+        level: String,
+        logType: LogType,
+        result: LogResult,
+        payload: Map<String, Any?>,
+        throwable: Throwable?
+    ) {
+        val step = StepContext.get() ?: LogStep.UNKNOWN
+        val rateResult = rateLimiter.acquire(step, level)
+        if (!rateResult.allowed) {
+            return
+        }
+
+        val safePayload = try {
+            sanitizer.sanitize(payload)
+        } catch (_: Exception) {
+            SanitizedPayload(payload = mapOf("payload" to "[MASKING_ERROR]"), payloadTruncated = false)
+        }
+
+        // normalizePayload only adds fixed internal markers for contract handling.
+        val normalized = normalizePayload(result, safePayload.payload)
+        val payloadWithoutDuration = normalized.payload.filterKeys { it != "durationMs" }
+
+        val envelope = LogEnvelope(
+            timestamp = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+            level = level,
+            service = serviceName,
+            logType = logType,
+            step = step,
+            result = result,
+            traceId = MDC.get(LogMdcKeys.TRACE_ID),
+            orderFlowId = MDC.get(LogMdcKeys.ORDER_FLOW_ID),
+            eventId = MDC.get(LogMdcKeys.EVENT_ID),
+            messageId = MDC.get(LogMdcKeys.MESSAGE_ID),
+            deliveryId = MDC.get(LogMdcKeys.DELIVERY_ID)?.toLongOrNull(),
+            durationMs = normalized.payload["durationMs"].toLongOrNull(),
+            payloadTruncated = safePayload.payloadTruncated.takeIf { it },
+            suppressed = rateResult.suppressed.takeIf { it > 0 },
+            payload = payloadWithoutDuration,
+            error = throwable?.toLogError()
+        )
+
+        try {
+            val json = mapper.writeValueAsString(envelope)
+            emit(level, ensureLineSize(level, json, envelope))
+            normalized.warning?.let { emit("WARN", it) }
+        } catch (ex: Exception) {
+            emit("ERROR", fallbackJson(step, ex))
+        }
+    }
+
+    private fun emit(level: String, json: String) {
+        when (level) {
+            "DEBUG" -> emitter.debug(json)
+            "INFO" -> emitter.info(json)
+            "WARN" -> emitter.warn(json)
+            else -> emitter.error(json)
+        }
+    }
+
+    private fun ensureLineSize(level: String, json: String, envelope: LogEnvelope): String {
+        if (json.toByteArray(Charsets.UTF_8).size <= MAX_LINE_BYTES) {
+            return json
+        }
+        val existingError = envelope.error
+        val minimalEnvelope = envelope.copy(
+            level = level,
+            payloadTruncated = true,
+            payload = mapOf(
+                "reason" to "line_size_exceeded",
+                "maxBytes" to MAX_LINE_BYTES
+            ),
+            error = existingError?.copy(message = existingError.message?.take(120))
+        )
+        val minimalJson = mapper.writeValueAsString(minimalEnvelope)
+        if (minimalJson.toByteArray(Charsets.UTF_8).size <= MAX_LINE_BYTES) {
+            return minimalJson
+        }
+        return "{\"timestamp\":\"${OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)}\",\"level\":\"$level\",\"service\":\"$serviceName\",\"logType\":\"${envelope.logType.name}\",\"step\":\"${envelope.step}\",\"result\":\"${envelope.result.name}\",\"payload\":{\"reason\":\"line_size_exceeded\",\"fallback\":true}}"
+    }
+
+    private fun fallbackJson(step: String, ex: Exception): String {
+        return try {
+            mapper.writeValueAsString(
+                mapOf(
+                    "timestamp" to OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                    "level" to "ERROR",
+                    "service" to serviceName,
+                    "logType" to LogType.TECHNICAL.name,
+                    "step" to LogStep.LOGGING_SERIALIZE,
+                    "result" to LogResult.FAIL.name,
+                    "traceId" to MDC.get(LogMdcKeys.TRACE_ID),
+                    "payload" to mapOf(
+                        "reason" to "serialization_failure",
+                        "originStep" to step
+                    ),
+                    "error" to mapOf(
+                        "type" to ex::class.java.simpleName,
+                        "message" to ex.message?.take(500)
+                    )
+                )
+            )
+        } catch (_: Exception) {
+            "{\"timestamp\":\"${OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)}\",\"level\":\"ERROR\",\"service\":\"$serviceName\",\"logType\":\"TECHNICAL\",\"step\":\"${LogStep.LOGGING_SERIALIZE}\",\"result\":\"FAIL\",\"payload\":{\"reason\":\"serialization_failure\",\"fallback\":true}}"
+        }
+    }
+
+    private fun normalizePayload(result: LogResult, payload: Map<String, Any?>): NormalizedPayload {
+        if (result != LogResult.END) {
+            return NormalizedPayload(payload = payload)
+        }
+
+        val mutable = payload.toMutableMap()
+        val processResult = mutable["processResult"]?.toString()
+
+        if (processResult == null) {
+            mutable["processResult"] = ProcessResult.FAIL.name
+            mutable["contractViolation"] = "missing_process_result"
+            return NormalizedPayload(
+                payload = mutable,
+                warning = contractViolationWarning("missing_process_result")
+            )
+        }
+
+        return try {
+            ProcessResult.valueOf(processResult)
+            NormalizedPayload(payload = mutable)
+        } catch (_: IllegalArgumentException) {
+            mutable["processResult"] = ProcessResult.FAIL.name
+            mutable["contractViolation"] = "invalid_process_result"
+            NormalizedPayload(
+                payload = mutable,
+                warning = contractViolationWarning("invalid_process_result")
+            )
+        }
+    }
+
+    private fun contractViolationWarning(reason: String): String {
+        return runCatching {
+            mapper.writeValueAsString(
+                mapOf(
+                    "timestamp" to OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                    "level" to "WARN",
+                    "service" to serviceName,
+                    "logType" to LogType.TECHNICAL.name,
+                    "step" to LogStep.LOGGING_CONTRACT_VIOLATION,
+                    "result" to LogResult.SKIP.name,
+                    "traceId" to MDC.get(LogMdcKeys.TRACE_ID),
+                    "payload" to mapOf("reason" to reason)
+                )
+            )
+        }.getOrDefault(
+            "{\"timestamp\":\"${OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)}\",\"level\":\"WARN\",\"service\":\"$serviceName\",\"logType\":\"TECHNICAL\",\"step\":\"${LogStep.LOGGING_CONTRACT_VIOLATION}\",\"result\":\"SKIP\",\"payload\":{\"reason\":\"$reason\"}}"
+        )
+    }
+
+    private fun Any?.toLongOrNull(): Long? {
+        return when (this) {
+            null -> null
+            is Long -> this
+            is Int -> this.toLong()
+            is Number -> this.toLong()
+            else -> this.toString().toLongOrNull()
+        }
+    }
+
+    private fun Throwable.toLogError(): LogError {
+        return LogError(
+            type = this::class.java.simpleName,
+            code = (this as? CodedError)?.errorCode,
+            message = message?.take(500)
+        )
+    }
+
+    companion object {
+        private const val MAX_LINE_BYTES = 8 * 1024
+
+        private fun defaultObjectMapper(): ObjectMapper {
+            return ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL)
+        }
+    }
+}
+
+data class RateAcquireResult(
+    val allowed: Boolean,
+    val suppressed: Int
+)
+
+class LogRateLimiter(private val limitPerSecond: Int) {
+    private val windows = ConcurrentHashMap<String, AtomicReference<RateWindow>>()
+
+    fun acquire(step: String, level: String): RateAcquireResult {
+        val key = "$step|$level"
+        if (!windows.containsKey(key) && windows.size >= MAX_WINDOW_ENTRIES) {
+            return RateAcquireResult(allowed = true, suppressed = 0)
+        }
+        val nowSecond = System.currentTimeMillis() / 1000
+        val stateRef = windows.computeIfAbsent(key) { AtomicReference(RateWindow(epochSecond = nowSecond, count = 0, suppressed = 0)) }
+
+        while (true) {
+            val current = stateRef.get()
+
+            if (current.epochSecond != nowSecond) {
+                val reset = RateWindow(epochSecond = nowSecond, count = 1, suppressed = 0)
+                if (stateRef.compareAndSet(current, reset)) {
+                    return RateAcquireResult(allowed = true, suppressed = current.suppressed)
+                }
+                continue
+            }
+
+            if (current.count < limitPerSecond) {
+                val next = current.copy(count = current.count + 1)
+                if (stateRef.compareAndSet(current, next)) {
+                    return RateAcquireResult(allowed = true, suppressed = 0)
+                }
+                continue
+            }
+
+            val suppressed = current.copy(suppressed = current.suppressed + 1)
+            if (stateRef.compareAndSet(current, suppressed)) {
+                return RateAcquireResult(allowed = false, suppressed = 0)
+            }
+        }
+    }
+
+    companion object {
+        private const val DEFAULT_LIMIT = 100
+        private const val MAX_WINDOW_ENTRIES = 1000
+
+        fun fromEnvironment(): LogRateLimiter {
+            val configured = System.getenv("LOG_RATE_LIMIT_PER_SECOND")?.toIntOrNull()
+            val limit = configured?.takeIf { it > 0 } ?: DEFAULT_LIMIT
+            return LogRateLimiter(limit)
+        }
+    }
+}
+
+data class RateWindow(
+    val epochSecond: Long,
+    val count: Int,
+    val suppressed: Int
+)
+
+data class NormalizedPayload(
+    val payload: Map<String, Any?>,
+    val warning: String? = null
+)
+
+interface LogEmitter {
+    fun debug(message: String)
+    fun info(message: String)
+    fun warn(message: String)
+    fun error(message: String)
+}
+
+class Slf4jLogEmitter(private val logger: Logger) : LogEmitter {
+    override fun debug(message: String) {
+        logger.debug(message)
+    }
+
+    override fun info(message: String) {
+        logger.info(message)
+    }
+
+    override fun warn(message: String) {
+        logger.warn(message)
+    }
+
+    override fun error(message: String) {
+        logger.error(message)
+    }
+}

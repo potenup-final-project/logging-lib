@@ -1,0 +1,37 @@
+# Version catalog is a central place for you to declare and version dependencies
+# https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
+# https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
+
+[versions]
+kotlin = "1.9.25"
+kotlinxDatetime = "0.6.1"
+kotlinxSerializationJSON = "1.7.3"
+kotlinxCoroutines = "1.8.1"
+slf4j = "2.0.17"
+spring = "6.2.5"
+springBoot = "3.4.4"
+aspectj = "1.9.24"
+jackson = "2.18.3"
+jakartaServlet = "6.1.0"
+
+[libraries]
+kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
+kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJSON" }
+kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+springContext = { module = "org.springframework:spring-context", version.ref = "spring" }
+springAop = { module = "org.springframework:spring-aop", version.ref = "spring" }
+springBootAutoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure", version.ref = "springBoot" }
+aspectjWeaver = { module = "org.aspectj:aspectjweaver", version.ref = "aspectj" }
+springWeb = { module = "org.springframework:spring-web", version.ref = "spring" }
+springTest = { module = "org.springframework:spring-test", version.ref = "spring" }
+jacksonDatabind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jakartaServletApi = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakartaServlet" }
+
+# Libraries can be bundled together for easier import
+[bundles]
+kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
+
+[plugins]
+kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
