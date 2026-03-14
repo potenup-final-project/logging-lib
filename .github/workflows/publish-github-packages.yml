@@ -68,6 +68,9 @@ jobs:
           echo "release_url=${REPO_URL}" >> "$GITHUB_OUTPUT"
           echo "snapshot_url=${REPO_URL}" >> "$GITHUB_OUTPUT"
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Verify build and conventions
         run: ./gradlew clean build validateLoggingConventions
 
