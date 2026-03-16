@@ -68,17 +68,40 @@ class TraceContextFilter(
 
             StepContext.scoped(LogStep.HTTP_REQUEST_END) {
                 MDC.put(LogMdcKeys.STEP, LogStep.HTTP_REQUEST_END)
-                structuredLogger.info(
-                    logType = LogType.HTTP,
-                    result = LogResult.END,
-                    payload = mapOf(
-                        "requestUri" to request.requestURI,
-                        "httpMethod" to request.method,
-                        "httpStatus" to effectiveStatus,
-                        "durationMs" to elapsed,
-                        "processResult" to processResult
-                    )
+                val endPayload = mapOf(
+                    "requestUri" to request.requestURI,
+                    "httpMethod" to request.method,
+                    "httpStatus" to effectiveStatus,
+                    "durationMs" to elapsed,
+                    "processResult" to processResult
                 )
+
+                when {
+                    thrown != null || effectiveStatus >= 500 || effectiveStatus == 401 || effectiveStatus == 403 -> {
+                        structuredLogger.error(
+                            logType = LogType.HTTP,
+                            result = LogResult.END,
+                            payload = endPayload,
+                            error = thrown
+                        )
+                    }
+
+                    effectiveStatus >= 400 -> {
+                        structuredLogger.warn(
+                            logType = LogType.HTTP,
+                            result = LogResult.END,
+                            payload = endPayload
+                        )
+                    }
+
+                    else -> {
+                        structuredLogger.info(
+                            logType = LogType.HTTP,
+                            result = LogResult.END,
+                            payload = endPayload
+                        )
+                    }
+                }
             }
             if (previousMdc == null) {
                 MDC.clear()

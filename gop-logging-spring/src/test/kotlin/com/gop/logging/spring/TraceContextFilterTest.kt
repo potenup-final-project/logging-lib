@@ -51,10 +51,58 @@ class TraceContextFilterTest {
         }
 
         val endLog = logger.logs.last()
+        assertEquals("ERROR", endLog.level)
         assertEquals(LogResult.END, endLog.result)
         assertEquals(500, endLog.payload["httpStatus"])
         assertEquals("FAIL", endLog.payload["processResult"])
         assertTrue(logger.logs.size >= 2)
+    }
+
+    @Test
+    fun writesErrorEndLogForUnauthorizedAndForbidden() {
+        val logger = FilterCapturingStructuredLogger()
+        val filter = TraceContextFilter(logger)
+
+        val unauthorizedRequest = MockHttpServletRequest("GET", "/payments/confirm")
+        val unauthorizedResponse = MockHttpServletResponse()
+        val unauthorizedChain = FilterChain { _: ServletRequest, res: ServletResponse ->
+            (res as MockHttpServletResponse).status = 401
+        }
+
+        filter.doFilter(unauthorizedRequest, unauthorizedResponse, unauthorizedChain)
+        val unauthorizedEndLog = logger.logs.last()
+        assertEquals("ERROR", unauthorizedEndLog.level)
+        assertEquals(401, unauthorizedEndLog.payload["httpStatus"])
+
+        val forbiddenRequest = MockHttpServletRequest("GET", "/payments/confirm")
+        val forbiddenResponse = MockHttpServletResponse()
+        val forbiddenChain = FilterChain { _: ServletRequest, res: ServletResponse ->
+            (res as MockHttpServletResponse).status = 403
+        }
+
+        filter.doFilter(forbiddenRequest, forbiddenResponse, forbiddenChain)
+        val forbiddenEndLog = logger.logs.last()
+        assertEquals("ERROR", forbiddenEndLog.level)
+        assertEquals(403, forbiddenEndLog.payload["httpStatus"])
+    }
+
+    @Test
+    fun writesWarnEndLogForOther4xxStatuses() {
+        val logger = FilterCapturingStructuredLogger()
+        val filter = TraceContextFilter(logger)
+
+        val request = MockHttpServletRequest("GET", "/payments/confirm")
+        val response = MockHttpServletResponse()
+        val chain = FilterChain { _: ServletRequest, res: ServletResponse ->
+            (res as MockHttpServletResponse).status = 404
+        }
+
+        filter.doFilter(request, response, chain)
+
+        val endLog = logger.logs.last()
+        assertEquals("WARN", endLog.level)
+        assertEquals(404, endLog.payload["httpStatus"])
+        assertEquals("FAIL", endLog.payload["processResult"])
     }
 }
 
