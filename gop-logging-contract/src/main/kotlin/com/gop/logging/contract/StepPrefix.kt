@@ -1,13 +1,20 @@
 package com.gop.logging.contract
 
 object StepPrefix {
+    const val PAYMENT_CLAIM = "payment.claim"
+    const val PAYMENT_CONFIRM = "payment.confirm"
     const val PAYMENT_CONFIRM_STEP1 = "payment.confirm.step1"
     const val PAYMENT_CONFIRM_STEP2 = "payment.confirm.step2"
+    const val PAYMENT_CANCEL = "payment.cancel"
     const val PAYMENT_CANCEL_STEP1 = "payment.cancel.step1"
     const val PAYMENT_CANCEL_STEP2 = "payment.cancel.step2"
+    const val PAYMENT_RECONCILIATION = "payment.reconciliation"
     const val OUTBOX_RELAY = "outbox.relay"
     const val BATCH_NETCANCEL = "batch.netcancel"
     const val WEBHOOK_DELIVERY = "webhook.delivery"
+    const val WEBHOOK_SEND = "webhook.send"
+    const val WEBHOOK_RECONCILIATION = "webhook.reconciliation"
+    const val WEBHOOK_ENDPOINT = "webhook.endpoint"
     const val SETTLEMENT_LEDGER = "settlement.ledger"
     const val SETTLEMENT_RETRY = "settlement.retry"
     const val BACKOFFICE_PAYMENT = "backoffice.payment"

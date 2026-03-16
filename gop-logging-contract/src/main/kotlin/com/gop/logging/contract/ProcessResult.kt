@@ -5,5 +5,7 @@ enum class ProcessResult {
     FAIL,
     SKIP,
     RETRY,
-    DLQ
+    DLQ,
+    APPROACH,
+    EXIT
 }

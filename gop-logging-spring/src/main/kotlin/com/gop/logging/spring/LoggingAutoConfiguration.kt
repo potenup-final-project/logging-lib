@@ -81,6 +81,15 @@ class LoggingAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    fun gopMethodIoLoggingAspect(
+        structuredLogger: StructuredLogger,
+        sanitizer: LogSanitizer
+    ): MethodIoLoggingAspect {
+        return MethodIoLoggingAspect(structuredLogger, sanitizer)
+    }
+
+    @Bean
     @ConditionalOnMissingBean(TaskDecorator::class)
     fun gopMdcStepTaskDecorator(structuredLogger: StructuredLogger): TaskDecorator {
         return MdcStepTaskDecorator(structuredLogger)
