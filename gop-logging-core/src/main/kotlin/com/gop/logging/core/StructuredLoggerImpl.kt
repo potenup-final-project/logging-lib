@@ -320,3 +320,21 @@ class Slf4jLogEmitter(private val logger: Logger) : LogEmitter {
         logger.error(message)
     }
 }
+
+class StdoutJsonLogEmitter : LogEmitter {
+    override fun debug(message: String) {
+        System.out.println(message)
+    }
+
+    override fun info(message: String) {
+        System.out.println(message)
+    }
+
+    override fun warn(message: String) {
+        System.out.println(message)
+    }
+
+    override fun error(message: String) {
+        System.err.println(message)
+    }
+}

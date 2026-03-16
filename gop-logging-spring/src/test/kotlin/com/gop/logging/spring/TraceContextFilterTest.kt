@@ -18,6 +18,17 @@ import kotlin.test.assertFailsWith
 class TraceContextFilterTest {
 
     @Test
+    fun skipsExcludedPaths() {
+        val logger = FilterCapturingStructuredLogger()
+        val filter = TraceContextFilter(logger)
+        val request = MockHttpServletRequest("GET", "/actuator/health")
+
+        val shouldSkip = filter.shouldNotFilter(request)
+
+        assertTrue(shouldSkip)
+    }
+
+    @Test
     fun writesHttpStartAndEndLogsAndSetsTraceHeader() {
         val logger = FilterCapturingStructuredLogger()
         val filter = TraceContextFilter(logger)
