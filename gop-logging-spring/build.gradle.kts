@@ -6,7 +6,6 @@ dependencies {
     implementation(project(":gop-logging-contract"))
     implementation(project(":gop-logging-core"))
     implementation(libs.slf4jApi)
-    implementation(libs.jacksonDatabind)
     implementation(libs.kotlinxCoroutines)
     implementation(libs.springBootAutoconfigure)
     implementation(libs.springContext)
