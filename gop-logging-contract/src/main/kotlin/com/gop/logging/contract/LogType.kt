@@ -6,5 +6,7 @@ enum class LogType {
     INTEGRATION,
     SECURITY,
     TECHNICAL,
-    AUDIT
+    AUDIT,
+    ARGS,
+    RETURN
 }
