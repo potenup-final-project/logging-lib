@@ -60,10 +60,18 @@ class LoggingAutoConfiguration {
         }
 
         val emitter = resolveEmitter(environment)
+        val minimumLevel = System.getenv("LOG_MIN_LEVEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: System.getProperty("LOG_MIN_LEVEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: environment.getProperty("LOG_MIN_LEVEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: "INFO"
 
         return StructuredLoggerImpl(
             serviceName = serviceName,
             sanitizer = sanitizer,
+            minimumLevel = minimumLevel,
             emitter = emitter
         )
     }
