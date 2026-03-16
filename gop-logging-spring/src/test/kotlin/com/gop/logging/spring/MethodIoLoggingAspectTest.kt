@@ -8,6 +8,7 @@ import com.gop.logging.contract.ReturnLog
 import com.gop.logging.contract.StructuredLogger
 import com.gop.logging.core.LogSanitizer
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory
@@ -30,7 +31,8 @@ class MethodIoLoggingAspectTest {
         assertEquals(ProcessResult.APPROACH.name, argsLog.payload["processResult"])
 
         val arguments = argsLog.payload["arguments"] as Map<*, *>
-        val input = arguments["input"] as Map<*, *>
+        val input = (arguments["input"] ?: arguments["arg0"]) as Map<*, *>
+        assertNotNull(input)
         assertEquals("order-1", input["orderId"])
         assertTrue((input["password"] as String).contains("***"))
 
@@ -89,7 +91,7 @@ class MethodIoLoggingAspectTest {
     private fun createProxy(target: Any, logger: StructuredLogger): Any {
         val factory = AspectJProxyFactory(target)
         factory.addAspect(MethodIoLoggingAspect(logger, LogSanitizer()))
-        return factory.proxy
+        return factory.getProxy()
     }
 }
 

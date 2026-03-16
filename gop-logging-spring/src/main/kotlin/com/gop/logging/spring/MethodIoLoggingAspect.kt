@@ -91,7 +91,7 @@ class MethodIoLoggingAspect(
         method: Method
     ): Map<String, Any?> {
         val signature = joinPoint.signature as MethodSignature
-        val names = signature.parameterNames
+        val names = signature.parameterNames ?: emptyArray()
         val values = joinPoint.args
 
         val arguments = linkedMapOf<String, Any?>()

@@ -22,10 +22,12 @@ class TraceContextFilterTest {
         val logger = FilterCapturingStructuredLogger()
         val filter = TraceContextFilter(logger)
         val request = MockHttpServletRequest("GET", "/actuator/health")
+        val response = MockHttpServletResponse()
 
-        val shouldSkip = filter.shouldNotFilter(request)
+        filter.doFilter(request, response, MockFilterChain())
 
-        assertTrue(shouldSkip)
+        assertTrue(logger.logs.isEmpty())
+        assertEquals(null, response.getHeader("X-Trace-Id"))
     }
 
     @Test
