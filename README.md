@@ -32,6 +32,13 @@ Common logging library for `pg_core`, `worker`, and `backoffice`.
 
 - Use `MdcStepCoroutineContext.captureCurrent()` to propagate MDC + StepContext in coroutine boundaries.
 
+## Method I/O Logging
+
+- Annotate class or method with `@ArgsLog` and/or `@ReturnLog`.
+- `@ArgsLog`: `DEBUG` on method entry (`logType=ARGS`, `payload.processResult=APPROACH`).
+- `@ReturnLog`: `DEBUG` on successful return (`logType=RETURN`, `payload.processResult=EXIT`).
+- Sensitive keys (`password`, `token`, `secret`, etc.) are masked and large payloads are summarized.
+
 ## Publish (GitHub Packages)
 
 - Configure Gradle properties (CI recommended):
