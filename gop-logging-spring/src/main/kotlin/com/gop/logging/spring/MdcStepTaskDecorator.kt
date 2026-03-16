@@ -53,7 +53,7 @@ class MdcStepTaskDecorator(
                 }
 
                 runnable.run()
-            } catch (ex: Throwable) {
+            } catch (ex: Exception) {
                 StepContext.scoped(LogStep.LOGGING_CONTEXT_MISSING) {
                     structuredLogger.warn(
                         logType = LogType.TECHNICAL,
@@ -67,6 +67,8 @@ class MdcStepTaskDecorator(
                     )
                 }
                 throw ex
+            } catch (err: Error) {
+                throw err
             } finally {
                 if (previousStep == null) {
                     StepContext.clear()
