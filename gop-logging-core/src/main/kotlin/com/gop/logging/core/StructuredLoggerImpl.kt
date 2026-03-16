@@ -23,6 +23,7 @@ class StructuredLoggerImpl(
     private val serviceName: String,
     private val sanitizer: LogSanitizer = LogSanitizer(),
     private val rateLimiter: LogRateLimiter = LogRateLimiter.fromEnvironment(),
+    private val minimumLevel: String = System.getenv("LOG_MIN_LEVEL") ?: "DEBUG",
     private val emitter: LogEmitter = Slf4jLogEmitter(LoggerFactory.getLogger(StructuredLoggerImpl::class.java))
 ) : StructuredLogger {
 
@@ -55,6 +56,10 @@ class StructuredLoggerImpl(
         payload: Map<String, Any?>,
         throwable: Throwable?
     ) {
+        if (!isEnabled(level)) {
+            return
+        }
+
         val step = StepContext.get() ?: LogStep.UNKNOWN
         val rateResult = rateLimiter.acquire(step, level)
         if (!rateResult.allowed) {
@@ -227,6 +232,25 @@ class StructuredLoggerImpl(
 
         private fun defaultObjectMapper(): ObjectMapper {
             return ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL)
+        }
+    }
+
+    private fun isEnabled(level: String): Boolean {
+        val configured = LogLevel.parse(minimumLevel)
+        val requested = LogLevel.parse(level)
+        return requested.priority >= configured.priority
+    }
+}
+
+private enum class LogLevel(val priority: Int) {
+    DEBUG(10),
+    INFO(20),
+    WARN(30),
+    ERROR(40);
+
+    companion object {
+        fun parse(value: String): LogLevel {
+            return entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: DEBUG
         }
     }
 }
