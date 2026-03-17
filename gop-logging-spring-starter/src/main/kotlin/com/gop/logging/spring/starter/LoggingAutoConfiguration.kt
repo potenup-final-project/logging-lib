@@ -1,4 +1,4 @@
-package com.gop.logging.spring
+package com.gop.logging.spring.starter
 
 import com.gop.logging.contract.StructuredLogger
 import com.gop.logging.core.LogEmitter
@@ -7,6 +7,11 @@ import com.gop.logging.core.Slf4jLogEmitter
 import com.gop.logging.core.StepResolver
 import com.gop.logging.core.StdoutJsonLogEmitter
 import com.gop.logging.core.StructuredLoggerImpl
+import com.gop.logging.spring.MdcStepTaskDecorator
+import com.gop.logging.spring.MethodIoLoggingAspect
+import com.gop.logging.spring.StepContextAspect
+import com.gop.logging.spring.TechnicalLoggingAspect
+import com.gop.logging.spring.TraceContextFilter
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
@@ -60,10 +65,18 @@ class LoggingAutoConfiguration {
         }
 
         val emitter = resolveEmitter(environment)
+        val minimumLevel = System.getenv("LOG_MIN_LEVEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: System.getProperty("LOG_MIN_LEVEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: environment.getProperty("LOG_MIN_LEVEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: "INFO"
 
         return StructuredLoggerImpl(
             serviceName = serviceName,
             sanitizer = sanitizer,
+            minimumLevel = minimumLevel,
             emitter = emitter
         )
     }

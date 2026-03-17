@@ -9,6 +9,7 @@ import org.slf4j.MDC
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StructuredLoggerImplTest {
@@ -129,6 +130,73 @@ class StructuredLoggerImplTest {
 
         val json = mapper.readTree(emitter.entries.first().message)
         assertEquals("PAY-0001", json["error"]["code"].asText())
+    }
+
+    @Test
+    fun capturesRootCauseAndRootBasedCauseChain() {
+        val emitter = TestEmitter()
+        val logger = StructuredLoggerImpl(serviceName = "pg_core", emitter = emitter)
+
+        val root = IllegalArgumentException("root token=very-secret")
+        val wrapped1 = IllegalStateException("middle", root)
+        val wrapped2 = RuntimeException("top", wrapped1)
+
+        logger.error(
+            logType = LogType.FLOW,
+            result = LogResult.FAIL,
+            error = wrapped2
+        )
+
+        val json = mapper.readTree(emitter.entries.first().message)
+        val error = json["error"]
+        assertEquals("IllegalArgumentException", error["rootCauseType"].asText())
+        assertTrue(error["rootCauseMessage"].asText().contains("***"))
+        assertEquals(3, error["causeChain"].size())
+        assertEquals("IllegalArgumentException", error["causeChain"][0]["type"].asText())
+        assertEquals("IllegalStateException", error["causeChain"][1]["type"].asText())
+        assertEquals("RuntimeException", error["causeChain"][2]["type"].asText())
+        assertNotNull(error["stackHash"])
+    }
+
+    @Test
+    fun stripsStackTraceWhenLineStillTooLarge() {
+        val emitter = TestEmitter()
+        val logger = StructuredLoggerImpl(serviceName = "pg_core", emitter = emitter)
+        val hugeMessage = "x".repeat(15000)
+
+        logger.error(
+            logType = LogType.FLOW,
+            result = LogResult.FAIL,
+            error = IllegalStateException(hugeMessage)
+        )
+
+        val out = emitter.entries.first().message
+        assertTrue(out.toByteArray(Charsets.UTF_8).size <= 12288)
+        val json = mapper.readTree(out)
+        val error = json["error"]
+        if (error != null && !error.isNull) {
+            assertNotNull(error["stackHash"])
+            val stackTrace = error.get("stackTrace")
+            assertTrue(stackTrace == null || stackTrace.isNull || stackTrace.asText().isNotBlank())
+        }
+    }
+
+    @Test
+    fun nonErrorLogKeepsEightKilobyteBoundary() {
+        val emitter = TestEmitter()
+        val logger = StructuredLoggerImpl(serviceName = "pg_core", emitter = emitter)
+        val huge = "x".repeat(16000)
+
+        logger.info(
+            logType = LogType.FLOW,
+            result = LogResult.SUCCESS,
+            payload = mapOf("detail" to huge)
+        )
+
+        val out = emitter.entries.first().message
+        assertTrue(out.toByteArray(Charsets.UTF_8).size <= 8192)
+        val json = mapper.readTree(out)
+        assertNull(json["error"])
     }
 
     @Test

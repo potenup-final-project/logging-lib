@@ -3,14 +3,12 @@ package com.gop.logging.core
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.gop.logging.contract.LogEnvelope
-import com.gop.logging.contract.LogError
 import com.gop.logging.contract.LogMdcKeys
 import com.gop.logging.contract.LogResult
 import com.gop.logging.contract.LogStep
 import com.gop.logging.contract.LogType
 import com.gop.logging.contract.ProcessResult
 import com.gop.logging.contract.StructuredLogger
-import com.gop.logging.contract.CodedError
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
@@ -23,7 +21,11 @@ class StructuredLoggerImpl(
     private val serviceName: String,
     private val sanitizer: LogSanitizer = LogSanitizer(),
     private val rateLimiter: LogRateLimiter = LogRateLimiter.fromEnvironment(),
-    private val emitter: LogEmitter = Slf4jLogEmitter(LoggerFactory.getLogger(StructuredLoggerImpl::class.java))
+    private val minimumLevel: String = System.getenv("LOG_MIN_LEVEL") ?: "DEBUG",
+    private val emitter: LogEmitter = Slf4jLogEmitter(LoggerFactory.getLogger(StructuredLoggerImpl::class.java)),
+    private val errorExtractor: ErrorExtractor = ErrorExtractor(),
+    private val sizePolicy: LogSizePolicy = LogSizePolicy(),
+    private val encoder: LogEncoder = JsonLogEncoder(defaultObjectMapper(), sizePolicy, errorExtractor)
 ) : StructuredLogger {
 
     private val mapper: ObjectMapper = defaultObjectMapper()
@@ -55,6 +57,10 @@ class StructuredLoggerImpl(
         payload: Map<String, Any?>,
         throwable: Throwable?
     ) {
+        if (!isEnabled(level)) {
+            return
+        }
+
         val step = StepContext.get() ?: LogStep.UNKNOWN
         val rateResult = rateLimiter.acquire(step, level)
         if (!rateResult.allowed) {
@@ -87,12 +93,11 @@ class StructuredLoggerImpl(
             payloadTruncated = safePayload.payloadTruncated.takeIf { it },
             suppressed = rateResult.suppressed.takeIf { it > 0 },
             payload = payloadWithoutDuration,
-            error = throwable?.toLogError()
+            error = throwable?.let { errorExtractor.extract(it) }
         )
 
         try {
-            val json = mapper.writeValueAsString(envelope)
-            emit(level, ensureLineSize(level, json, envelope))
+            emit(level, ensureLineSize(envelope))
             normalized.warning?.let { emit("WARN", it) }
         } catch (ex: Exception) {
             emit("ERROR", fallbackJson(step, ex))
@@ -108,25 +113,8 @@ class StructuredLoggerImpl(
         }
     }
 
-    private fun ensureLineSize(level: String, json: String, envelope: LogEnvelope): String {
-        if (json.toByteArray(Charsets.UTF_8).size <= MAX_LINE_BYTES) {
-            return json
-        }
-        val existingError = envelope.error
-        val minimalEnvelope = envelope.copy(
-            level = level,
-            payloadTruncated = true,
-            payload = mapOf(
-                "reason" to "line_size_exceeded",
-                "maxBytes" to MAX_LINE_BYTES
-            ),
-            error = existingError?.copy(message = existingError.message?.take(120))
-        )
-        val minimalJson = mapper.writeValueAsString(minimalEnvelope)
-        if (minimalJson.toByteArray(Charsets.UTF_8).size <= MAX_LINE_BYTES) {
-            return minimalJson
-        }
-        return "{\"timestamp\":\"${OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)}\",\"level\":\"$level\",\"service\":\"$serviceName\",\"logType\":\"${envelope.logType.name}\",\"step\":\"${envelope.step}\",\"result\":\"${envelope.result.name}\",\"payload\":{\"reason\":\"line_size_exceeded\",\"fallback\":true}}"
+    private fun ensureLineSize(envelope: LogEnvelope): String {
+        return encoder.encode(envelope)
     }
 
     private fun fallbackJson(step: String, ex: Exception): String {
@@ -214,19 +202,28 @@ class StructuredLoggerImpl(
         }
     }
 
-    private fun Throwable.toLogError(): LogError {
-        return LogError(
-            type = this::class.java.simpleName,
-            code = (this as? CodedError)?.errorCode,
-            message = message?.take(500)
-        )
-    }
-
     companion object {
-        private const val MAX_LINE_BYTES = 8 * 1024
-
         private fun defaultObjectMapper(): ObjectMapper {
             return ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL)
+        }
+    }
+
+    private fun isEnabled(level: String): Boolean {
+        val configured = LogLevel.parse(minimumLevel)
+        val requested = LogLevel.parse(level)
+        return requested.priority >= configured.priority
+    }
+}
+
+private enum class LogLevel(val priority: Int) {
+    DEBUG(10),
+    INFO(20),
+    WARN(30),
+    ERROR(40);
+
+    companion object {
+        fun parse(value: String): LogLevel {
+            return entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: DEBUG
         }
     }
 }

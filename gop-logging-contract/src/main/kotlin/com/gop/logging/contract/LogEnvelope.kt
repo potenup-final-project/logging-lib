@@ -22,5 +22,16 @@ data class LogEnvelope(
 data class LogError(
     val type: String,
     val code: String? = null,
+    val message: String? = null,
+    val rootCauseType: String? = null,
+    val rootCauseMessage: String? = null,
+    val causeChain: List<LogCause>? = null,
+    val stackTrace: String? = null,
+    val stackHash: String? = null,
+    val stackTruncated: Boolean? = null
+)
+
+data class LogCause(
+    val type: String,
     val message: String? = null
 )
