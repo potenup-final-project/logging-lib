@@ -119,7 +119,7 @@ class TraceContextFilter(
     companion object {
         private const val HEADER_TRACE_ID = "X-Trace-Id"
         private const val HEADER_ORDER_FLOW_ID = "X-Order-Flow-Id"
-        internal val DEFAULT_EXCLUDED_PATH_PREFIXES = setOf(
+        val DEFAULT_EXCLUDED_PATH_PREFIXES = setOf(
             "/actuator",
             "/swagger-ui",
             "/v3/api-docs"

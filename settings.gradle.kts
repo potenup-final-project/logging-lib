@@ -19,5 +19,6 @@ plugins {
 include(":gop-logging-contract")
 include(":gop-logging-core")
 include(":gop-logging-spring")
+include(":gop-logging-spring-starter")
 
 rootProject.name = "gop-logging-lib"
