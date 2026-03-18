@@ -198,9 +198,10 @@ class StructuredLoggerImpl(
             null -> null
             is Long -> this
             is Int -> this.toLong()
-            is Number -> this.toLong()
-            is String -> this.kToLongOrNull()
-            else -> this.toString().trim().toLongOrNull()
+            is Short -> this.toLong()
+            is Byte -> this.toLong()
+            is String -> this.trim().kToLongOrNull()
+            else -> this.toString().trim().kToLongOrNull()
         }
     }
 
