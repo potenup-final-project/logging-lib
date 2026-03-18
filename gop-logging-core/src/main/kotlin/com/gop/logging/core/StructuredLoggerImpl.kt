@@ -198,7 +198,7 @@ class StructuredLoggerImpl(
             is Long -> this
             is Int -> this.toLong()
             is Number -> this.toLong()
-            else -> this.toString().toLongOrNull()
+            else -> this.toString().let { runCatching { it.toLong() }.getOrNull() }
         }
     }
 
