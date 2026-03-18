@@ -16,6 +16,7 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
+import  kotlin.text.toLongOrNull as kToLongOrNull
 
 class StructuredLoggerImpl(
     private val serviceName: String,
@@ -198,7 +199,8 @@ class StructuredLoggerImpl(
             is Long -> this
             is Int -> this.toLong()
             is Number -> this.toLong()
-            else -> this.toString().let { runCatching { it.toLong() }.getOrNull() }
+            is String -> this.kToLongOrNull()
+            else -> this.toString().trim().toLongOrNull()
         }
     }
 
